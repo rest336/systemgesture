@@ -603,6 +603,7 @@ def gen_display():
     """
     视频流生成器功能。
     """
+    
     gesture_detector = GestureRecognition()
     cv_fps_calc = CvFpsCalc(buffer_len=10)
     mode = 0

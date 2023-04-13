@@ -175,8 +175,7 @@ class GestureRecognition:
                         index_1.append(0)
                 # 最后将index（126）添加至in_dim（x，126）末尾
                 in_dim = torch.from_numpy(np.array(index_1))
-            elif len(results.multi_handedness) == 1 and results.multi_handedness[0].classification.__getitem__(
-                    0).index == 0:
+            elif len(results.multi_handedness) == 1 and results.multi_handedness[0].classification.__getitem__(0).index == 0:
                 for hand_landmarks in results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(
                         image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -188,8 +187,7 @@ class GestureRecognition:
                         index_0.append(hand_landmarks.landmark[k].y)
                         index_0.append(hand_landmarks.landmark[k].z)
                 in_dim = torch.from_numpy(np.array(index_0))
-            elif len(results.multi_handedness) == 2 and results.multi_handedness[0].classification.__getitem__(
-                    0).index == 1:
+            elif len(results.multi_handedness) == 2 and results.multi_handedness[0].classification.__getitem__(0).index == 1:
                 index_1_first = []
                 for hand_landmarks in results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(
@@ -199,8 +197,7 @@ class GestureRecognition:
                         index_1_first.append(hand_landmarks.landmark[k].y)
                         index_1_first.append(hand_landmarks.landmark[k].z)
                 in_dim = torch.from_numpy(np.array(index_1_first))
-            elif len(results.multi_handedness) == 2 and results.multi_handedness[0].classification.__getitem__(
-                    0).index == 0:
+            elif len(results.multi_handedness) == 2 and results.multi_handedness[0].classification.__getitem__(0).index == 0:
                 results.multi_hand_landmarks.reverse()
                 index_0_first = []
                 for hand_landmarks in results.multi_hand_landmarks:

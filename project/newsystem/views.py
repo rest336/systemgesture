@@ -135,117 +135,109 @@ class GestureRecognition:
         results = self.hands.process(image)
         image.flags.writeable = True
 
+        ### init ########################################
+        mp_drawing = mp.solutions.drawing_utils  # 坐标点绘制工具
+        mp_hands = mp.solutions.hands
+        movement = {0: "点击", 1: "平移", 2: "缩放", 3: "抓取", 4: "旋转", 5: "无", 6: "截图", 7:'放大'}
+        S = 0  # 每帧的处理时间
+        device = torch.device('cpu')  # 初始化于cpu上处理
+        if torch.cuda.is_available():  # 判断是否能使用cuda
+            device = torch.device('cuda:0')
+
+        model = torch.load(r'model.pt', map_location='cpu').to(device)  # 载入模型
+        # print(model)
+        hiddem_dim = 30  # 隐藏层大小
+        num_layers = 2  # GRU层数
+
+        h_t = torch.zeros(num_layers, 1, hiddem_dim)  # 初始化全0的h_t
+        h_t = h_t.to(device)  # 载入设备
+
+        last_gesture = '无'  # 初始化最后输出，用于判断是否与当前输出一致
+        prin_time = time.time()  # 初始化输出时间
+
+
+
         #####################################################################
         if results.multi_hand_landmarks is not None:
-            for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
-                                                  results.multi_handedness):
-                
-                # 计算手部矩形框
-                brect = self._calc_bounding_rect(debug_image, hand_landmarks)
-                # 关键点坐标计算（由比例转为实际像素）
-                landmark_list = self._calc_landmark_list(debug_image, hand_landmarks)
+            # 判断手掌个数
+            if len(results.multi_handedness) == 1 and results.multi_handedness[0].classification.__getitem__(0).index == 1:
+                # 判断左右手先后
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(
+                        image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    index_1 = []
+                    # 将指关节点数据依次存入index
+                    for k in range(0, 21):
+                        index_1.append(hand_landmarks.landmark[k].x)
+                        index_1.append(hand_landmarks.landmark[k].y)
+                        index_1.append(hand_landmarks.landmark[k].z)
+                    for k_1 in range(0, 63):
+                        index_1.append(0)
+                # 最后将index（126）添加至in_dim（x，126）末尾
+                in_dim = torch.from_numpy(np.array(index_1))
+            elif len(results.multi_handedness) == 1 and results.multi_handedness[0].classification.__getitem__(
+                    0).index == 0:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(
+                        image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    index_0 = []
+                    for k_1 in range(0, 63):
+                        index_0.append(0)
+                    for k in range(0, 21):
+                        index_0.append(hand_landmarks.landmark[k].x)
+                        index_0.append(hand_landmarks.landmark[k].y)
+                        index_0.append(hand_landmarks.landmark[k].z)
+                in_dim = torch.from_numpy(np.array(index_0))
+            elif len(results.multi_handedness) == 2 and results.multi_handedness[0].classification.__getitem__(
+                    0).index == 1:
+                index_1_first = []
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(
+                        image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    for k in range(0, 21):
+                        index_1_first.append(hand_landmarks.landmark[k].x)
+                        index_1_first.append(hand_landmarks.landmark[k].y)
+                        index_1_first.append(hand_landmarks.landmark[k].z)
+                in_dim = torch.from_numpy(np.array(index_1_first))
+            elif len(results.multi_handedness) == 2 and results.multi_handedness[0].classification.__getitem__(
+                    0).index == 0:
+                results.multi_hand_landmarks.reverse()
+                index_0_first = []
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(
+                        image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-                # 由实际像素转换为相对手腕关键点像素坐标并将坐标归一化
-                pre_processed_landmark_list = self._pre_process_landmark(
-                    landmark_list)
-                # 由实际像素转换为相对手腕关键点像素坐标并将坐标归一化
-                pre_processed_point_history_list = self._pre_process_point_history(
-                    debug_image, self.point_history)
+                    for k in range(0, 21):
+                        index_0_first.append(hand_landmarks.landmark[k].x)
+                        index_0_first.append(hand_landmarks.landmark[k].y)
+                        index_0_first.append(hand_landmarks.landmark[k].z)
+                in_dim = torch.from_numpy(np.array(index_0_first))
 
-                # Write to the dataset file (mode==0,pass)
-                self._logging_csv(number, mode, pre_processed_landmark_list,
-                                  pre_processed_point_history_list)
+                # cv2.imshow('MediaPipe Hands', image)
+                # cv2.waitKey(1)
 
+                in_dim = in_dim.unsqueeze(dim=0)
+                in_dim = in_dim.unsqueeze(dim=0)
+                in_dim = in_dim.to(torch.float32).to(device)
+                h_t = h_t.to(torch.float32).to(device)
+                if time.time() - prin_time < 2:
+                    in_dim = torch.zeros(1, 1, 126).to(device)
 
-                # 系统模式判断
-                hand_sign_id = self.keypoint_classifier(pre_processed_landmark_list)
-                if hand_sign_id == self.gesture_id and self.gesture_counter >= 25: # 如果连续x帧都为当前手势，则系统模式切换
-                    self.gesture_mode = GESTURE_MODE[hand_sign_id]
-                    self.gesture_counter = 0
-                elif hand_sign_id == self.gesture_id : # 如果当前帧手势与上一帧手势相同，但还没有连续x帧都为当前手势，则计数器加一
-                    self.gesture_counter += 1
-                elif hand_sign_id != self.gesture_id: # 如果当前帧手势与上一帧手势不同，则记录当前帧手势，计数器清零，模式切换为默认模式（观察）
-                    self.gesture_counter = 0
-                    self.gesture_id = hand_sign_id
-                    self.gesture_mode = 'VIEW'
+                rel, h_t = model((in_dim, h_t))
+                rel = torch.sigmoid(rel)
+                confidence, rel = rel.max(1)
 
-
-                # 各个模式切换控制
-                if self.gesture_mode == 'VIEW' or self.gesture_mode == '':
-                    self.point_history.append([0,0])
-                elif self.gesture_mode == 'CLEAR':
-                    self.point_history.clear()
-                elif self.gesture_mode == 'OCR':
-                    if self.point_history:
-                        _thread.start_new_thread(self.character_recognise, (debug_image.shape, ))
-                        # print(self.character)
-                        self.point_history.clear()
-                elif self.gesture_mode == 'MOUSE_UP':
-                    pyautogui.scroll(1)
-                elif self.gesture_mode == 'WRITE':
-                    self.point_history.append(landmark_list[8])
-                elif self.gesture_mode == 'MOUSE_DOWN':
-                    pyautogui.scroll(-1)
-                elif self.gesture_mode == 'POLYGON':
-                    basic_graph = []
-                    for point in self.point_history:
-                        if point != [0, 0]:
-                            basic_graph.append(point)
-                    if basic_graph:
-                        mat_array = np.mat(basic_graph)
-                        approx = cv.approxPolyDP(mat_array, 20, True)
-                        # x, y, w, h = cv.boundingRect(approx)
-                        # self.rectangles.append([x, y, w, h])
-                        self.polygons.append(approx)
-                        self.point_history.clear()
-                elif self.gesture_mode == 'MOUSE_LEFT_CLICK':
-                    pyautogui.click()
-                elif self.gesture_mode == 'MOUSE_RIGHT_CLICK':
-                    pyautogui.rightClick()
-                elif self.gesture_mode == 'MOUSE_MOVE':
-                    screenWidth, screenHeight = pyautogui.size()
-                    ratioWidth = screenWidth/WIDTH
-                    ratioHeight = screenHeight/HEIGHT
-                    [tempx, tempy] = landmark_list[8]
-                    pyautogui.moveTo(tempx * ratioHeight, tempy * ratioWidth)
-                elif self.gesture_mode == 'CIRCLE' and self.history_gesture_mode and self.history_gesture_mode[-1] != 'CIRCLEh' :
-                    basic_graph = []
-                    for point in self.point_history:
-                        if point != [0, 0]:
-                            basic_graph.append(point)
-                    if basic_graph:
-                        mat_array = np.mat(basic_graph)
-                        approx = cv.approxPolyDP(mat_array, 20, True)
-                        (x, y), radius = cv.minEnclosingCircle(approx)
-                        self.circles.append([x,y,radius])
-                        self.point_history.clear()
-
-
-
-
-                # 可视化
-                print(11)
-                debug_image = self._draw_bounding_rect(USE_BRECT, debug_image, brect)
-                debug_image = self._draw_landmarks(debug_image, landmark_list)
-                debug_image = self._draw_info_text(
-                    debug_image,
-                    brect,
-                    handedness,
-                    GESTURE_MODE[hand_sign_id],
-                    self.gesture_mode
-                )
-
-                # # Saving gesture
-                # self.gesture_id = hand_sign_id
-                if self.gesture_mode != 'VIEW':
-                    self.history_gesture_mode.append(self.gesture_mode)
-        else:
-            self.point_history.append([0, 0])
-            hand_sign_id = -1
-            self.gesture_id = 0
-
-        debug_image = self.draw_point_history(debug_image, self.point_history)
-
+                # 对每个动作设置单独的置信度阈值
+                cfd = {'点击': 0.90, '平移': 0.90, '缩放': 0.99, '抓取': 0.985, '旋转': 0.99, '无': 0, '截图': 0.99, '放大': 0.9}
+                if confidence > cfd[movement[rel.item()]]:  # 超过阈值的动作将会被输出
+                    now_gesture = last_gesture
+                    last_gesture = movement[rel.item()]
+                    if not (now_gesture == last_gesture):  # 判断是否与上次的输出相同，若相同则不输出
+                        if time.time() - prin_time > 2:  # 若距离上次输出时间小于2秒，则不输出
+                            # print(movement[rel.item()], ' \t置信度：', round(confidence.item(), 2))
+                            self.win.set_gesture(movement[rel.item()])
+                            prin_time = time.time()  # 重置输出时间
+                            h_t = torch.zeros(num_layers, 1, hiddem_dim).to(device)  # 将当前的h_t重置
         return debug_image, hand_sign_id , confidence
         # return debug_image, [k for k, v in GESTURE_MODE.items() if v == self.gesture_mode][0]
 
@@ -600,7 +592,6 @@ import cv2 as cv
 
 
 def gen_display():
-    print('1')
     """
     视频流生成器功能。
     """

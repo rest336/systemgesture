@@ -139,6 +139,7 @@ class GestureRecognition:
         if results.multi_hand_landmarks is not None:
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
                                                   results.multi_handedness):
+                
                 # 计算手部矩形框
                 brect = self._calc_bounding_rect(debug_image, hand_landmarks)
                 # 关键点坐标计算（由比例转为实际像素）
@@ -245,7 +246,7 @@ class GestureRecognition:
 
         debug_image = self.draw_point_history(debug_image, self.point_history)
 
-        return debug_image, hand_sign_id
+        return debug_image, hand_sign_id , confidence
         # return debug_image, [k for k, v in GESTURE_MODE.items() if v == self.gesture_mode][0]
 
 

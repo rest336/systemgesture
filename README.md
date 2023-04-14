@@ -1,4 +1,6 @@
 # systemgesture
 
 system with esp32 for gesture recognition
-111
+Install
+pip install -r requirement.txt 
+
